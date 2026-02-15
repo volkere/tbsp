@@ -1,6 +1,6 @@
 <!-- style: font-family: Arial; font-size: small; -->
 
-Thunderbolt Streaming Protocol (TBSPfor ePCI5.x)
+Thunderbolt Streaming Protocol (TBSP_for_ePCI5.x)
 
 
 
