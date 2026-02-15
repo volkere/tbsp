@@ -38,7 +38,7 @@ flowchart LR
 
 ---
 
-## 5. Minimal sender
+Minimal sender
 
 Blocking I/O, one frame at a time, sliding-window flow control.
 
@@ -47,7 +47,7 @@ Blocking I/O, one frame at a time, sliding-window flow control.
 
 ---
 
-## 6. Minimal receiver
+Minimal receiver
 
 Blocking I/O, in-order DATA processing, sends ACK per frame.
 
@@ -56,7 +56,7 @@ Blocking I/O, in-order DATA processing, sends ACK per frame.
 
 ---
 
-## 7. High-performance sender
+High-performance sender
 
 Non-blocking, poll loop, batch send (e.g. 32 frames, 8192-byte payload).
 
@@ -65,7 +65,7 @@ Non-blocking, poll loop, batch send (e.g. 32 frames, 8192-byte payload).
 
 ---
 
-## 8. High-performance receiver
+High-performance receiver
 
 Non-blocking, poll loop, ACK frames.
 
@@ -74,7 +74,7 @@ Non-blocking, poll loop, ACK frames.
 
 ---
 
-## 9. Performance tips
+Performance tips
 
 - MTU: Use Jumbo Frames (e.g. ifconfig en5 mtu 9000)
 - I/O: Non-blocking + polling
@@ -85,9 +85,9 @@ Non-blocking, poll loop, ACK frames.
 
 ---
 
-## 10. Usage
+Usage
 
-### Build
+Build
 
 ```bash
 make
