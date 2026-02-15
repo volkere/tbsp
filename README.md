@@ -1,6 +1,6 @@
 <!-- style: font-family: Arial; font-size: small; -->
 
-# Thunderbolt Streaming Protocol (TBSP)
+Thunderbolt Streaming Protocol (TBSP)
 
 
 
