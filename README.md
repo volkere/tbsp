@@ -18,7 +18,7 @@ Raw Ethernet protocol (Layer 2, custom protocol)
 - Flow control: Sliding window
 - Payload: Jumbo frames (MTU 9000 recommended)
 
-### Header definition
+Header definition
 
 See [include/tbsp_common.h](include/tbsp_common.h):
 
