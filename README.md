@@ -95,7 +95,7 @@ make
 
 Produces: sender, receiver, sender_hp, receiver_hp.
 
-### Run (root required)
+Run (root required)
 
 Raw Ethernet on macOS requires root (BPF access).
 
@@ -122,7 +122,7 @@ Note: Sender and receiver typically run on different hosts (Thunderbolt bridge) 
 
 ---
 
-## Project layout
+Project layout
 
 - TBSP/
   - README.md
