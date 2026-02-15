@@ -2,13 +2,10 @@
 
 # Thunderbolt Streaming Protocol (TBSP)
 
-## 1. Starting point
 
-Goal: Develop a network protocol to accelerate data transfer for streaming over a macOS Thunderbolt bridge.
 
----
+Develop a network protocol to accelerate data transfer for streaming over a macOS Thunderbolt bridge.
 
-## 2. Variants
 
 - Variant A: RDMA-inspired over DriverKit (kernel driver + user-space ring buffer)
 - Variant B: User-space shared memory / zero-copy
@@ -16,7 +13,6 @@ Goal: Develop a network protocol to accelerate data transfer for streaming over 
 
 The project uses Variant C (Raw Ethernet). Variant A is documented as reference only.
 
----
 
 ## 3. Variant A – RDMA-inspired (reference only)
 
