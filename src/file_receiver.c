@@ -29,13 +29,18 @@ static int recv_file_header(tbsp_receiver_t *r, uint64_t *file_size, char *path,
     return 0;
 }
 
+#define TBSP_DEFAULT_INTERFACE "en2"
+
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <interface> [output_dir]\n", argv[0]);
-        return 1;
+    const char *ifname;
+    const char *out_dir;
+    if (argc >= 2) {
+        ifname = argv[1];
+        out_dir = argc > 2 ? argv[2] : ".";
+    } else {
+        ifname = TBSP_DEFAULT_INTERFACE;
+        out_dir = ".";
     }
-    const char *ifname = argv[1];
-    const char *out_dir = argc > 2 ? argv[2] : ".";
 
     tbsp_receiver_t *r = tbsp_receiver_open(ifname);
     if (!r) {

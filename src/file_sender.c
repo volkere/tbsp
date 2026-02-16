@@ -35,14 +35,26 @@ static int send_file_header(tbsp_sender_t *s, uint64_t file_size, const char *pa
     return tbsp_sender_send(s, buf, (unsigned int)hdr_size);
 }
 
+#define TBSP_DEFAULT_INTERFACE "en2"
+
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <interface> <file> [remote_name]\n", argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s [interface] <file> [remote_name]\n", argv[0]);
+        fprintf(stderr, "  Default interface: " TBSP_DEFAULT_INTERFACE " (Thunderbolt Bridge)\n");
         return 1;
     }
-    const char *ifname = argv[1];
-    const char *filepath = argv[2];
-    const char *remote_name = argc > 3 ? argv[3] : filepath;
+    const char *ifname;
+    const char *filepath;
+    const char *remote_name;
+    if (argc >= 3) {
+        ifname = argv[1];
+        filepath = argv[2];
+        remote_name = argc > 3 ? argv[3] : filepath;
+    } else {
+        ifname = TBSP_DEFAULT_INTERFACE;
+        filepath = argv[1];
+        remote_name = filepath;
+    }
 
     FILE *f = fopen(filepath, "rb");
     if (!f) {
@@ -81,6 +93,8 @@ int main(int argc, char **argv) {
             break;
         if (tbsp_sender_send(s, chunk, (unsigned int)n) != 0) {
             perror("send chunk failed");
+            if (errno == ETIMEDOUT)
+                fprintf(stderr, "No ACKs received for 15s. Is receiver running on the other machine? (sudo ./file_receiver <interface> ./received)\n");
             break;
         }
         sent += n;

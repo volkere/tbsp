@@ -16,7 +16,8 @@
 #include "tbsp_api.h"
 
 #define ETH_HEADER_LEN 14
-#define READ_BUF_SIZE  (512 * 1024)
+/* Kernel BPF buffer; some systems cap this. Must hold >= WINDOW_SIZE frames (~1500 B each). */
+#define READ_BUF_SIZE  (256 * 1024)
 #define RECV_QUEUE_SIZE 2048
 
 struct tbsp_sender {
@@ -27,6 +28,8 @@ struct tbsp_sender {
     uint64_t last_acked;
     uint32_t remote_window;
     uint8_t *read_buf;
+    uint8_t *send_buf;
+    uint32_t *send_lens;
 };
 
 struct tbsp_receiver {
@@ -87,7 +90,12 @@ tbsp_sender_t *tbsp_sender_open(const char *ifname) {
     s->src_mac[0] = 0x02;
     s->remote_window = WINDOW_SIZE;
     s->read_buf = malloc(READ_BUF_SIZE);
-    if (!s->read_buf) {
+    s->send_buf = malloc((size_t)WINDOW_SIZE * TBSP_API_MAX_PAYLOAD);
+    s->send_lens = malloc((size_t)WINDOW_SIZE * sizeof(uint32_t));
+    if (!s->read_buf || !s->send_buf || !s->send_lens) {
+        free(s->read_buf);
+        free(s->send_buf);
+        free(s->send_lens);
         free(s);
         close(fd);
         return NULL;
@@ -124,7 +132,7 @@ static void sender_drain_acks(tbsp_sender_t *s) {
     }
 }
 
-static int send_one_frame(tbsp_sender_t *s, const void *payload, unsigned int len) {
+static int send_one_frame_with_seq(tbsp_sender_t *s, uint64_t seq, const void *payload, unsigned int len) {
     size_t total = ETH_HEADER_LEN + sizeof(TBSPHeader) + len;
     uint8_t *frame = malloc(total);
     if (!frame)
@@ -139,7 +147,7 @@ static int send_one_frame(tbsp_sender_t *s, const void *payload, unsigned int le
     h->type = TBSP_TYPE_DATA;
     h->flags = 0;
     h->stream_id = 0;
-    h->sequence = s->next_seq;
+    h->sequence = seq;
     h->ack = s->last_acked;
     h->payload_len = len;
     h->window = s->remote_window;
@@ -152,28 +160,62 @@ static int send_one_frame(tbsp_sender_t *s, const void *payload, unsigned int le
         n = write(s->bpf_fd, frame, total);
         if (n == (ssize_t)total)
             break;
-        if (n >= 0)
+        if (n >= 0) {
+            free(frame);
             return -1;
+        }
         if (errno != EAGAIN && errno != EWOULDBLOCK)
             break;
         usleep(1000);
     } while (--retries > 0);
     free(frame);
-    if (n != (ssize_t)total)
+    return (n == (ssize_t)total) ? 0 : -1;
+}
+
+static int send_one_frame(tbsp_sender_t *s, const void *payload, unsigned int len) {
+    uint64_t seq = s->next_seq;
+    unsigned int idx = (unsigned int)((seq - (s->last_acked + 1)) % (uint64_t)WINDOW_SIZE);
+    memcpy(s->send_buf + (size_t)idx * TBSP_API_MAX_PAYLOAD, payload, len);
+    s->send_lens[idx] = len;
+
+    if (send_one_frame_with_seq(s, seq, payload, len) != 0)
         return -1;
     s->next_seq++;
     return 0;
 }
 
+#define SENDER_ACK_TIMEOUT_MS  15000
+#define SENDER_POLL_MS         50
+
 int tbsp_sender_send(tbsp_sender_t *s, const void *data, unsigned int len) {
     if (len > TBSP_API_MAX_PAYLOAD)
         return -1;
+    int wait_iters = SENDER_ACK_TIMEOUT_MS / SENDER_POLL_MS;
+    uint64_t acked_at_start = s->last_acked;
     for (;;) {
         sender_drain_acks(s);
         if ((s->next_seq - s->last_acked) < s->remote_window)
             break;
+        if (s->last_acked != acked_at_start) {
+            acked_at_start = s->last_acked;
+            wait_iters = SENDER_ACK_TIMEOUT_MS / SENDER_POLL_MS;
+        }
+        if (--wait_iters <= 0) {
+            if (s->next_seq > s->last_acked + 1) {
+                for (uint64_t seq = s->last_acked + 1; seq < s->next_seq; seq++) {
+                    unsigned int idx = (unsigned int)((seq - (s->last_acked + 1)) % (uint64_t)WINDOW_SIZE);
+                    const uint8_t *p = s->send_buf + (size_t)idx * TBSP_API_MAX_PAYLOAD;
+                    uint32_t plen = s->send_lens[idx];
+                    send_one_frame_with_seq(s, seq, p, plen);
+                }
+                wait_iters = SENDER_ACK_TIMEOUT_MS / SENDER_POLL_MS;
+                continue;
+            }
+            errno = ETIMEDOUT;
+            return -1;
+        }
         struct pollfd pfd = { .fd = s->bpf_fd, .events = POLLIN };
-        if (poll(&pfd, 1, 50) < 0)
+        if (poll(&pfd, 1, SENDER_POLL_MS) < 0)
             return -1;
     }
     return send_one_frame(s, data, len);
@@ -183,6 +225,8 @@ void tbsp_sender_close(tbsp_sender_t *s) {
     if (!s) return;
     if (s->bpf_fd >= 0) close(s->bpf_fd);
     free(s->read_buf);
+    free(s->send_buf);
+    free(s->send_lens);
     free(s);
 }
 
@@ -270,6 +314,12 @@ static void process_read_buffer(tbsp_receiver_t *r, ssize_t n) {
             goto next;
         TBSPHeader *th = (TBSPHeader *)(pkt + ETH_HEADER_LEN);
         if (th->type == TBSP_TYPE_DATA) {
+            if (th->sequence < r->expected_seq) {
+                memcpy(r->sender_mac, pkt + 6, 6);
+                memcpy(r->my_mac, pkt, 6);
+                receiver_send_ack(r);
+                goto next;
+            }
             if (th->sequence != r->expected_seq)
                 goto next;
             uint32_t plen = th->payload_len;
