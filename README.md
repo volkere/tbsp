@@ -158,6 +158,38 @@ Non-blocking, poll loop, ACK frames.
 
 ---
 
+## C API and file transfer demo
+
+A small C API lets you send and receive payload chunks from your own program.
+
+- Header: [include/tbsp_api.h](include/tbsp_api.h)
+- Implementation: [src/tbsp_api.c](src/tbsp_api.c)
+
+API summary:
+
+- tbsp_sender_open(ifname), tbsp_sender_send(s, data, len), tbsp_sender_close(s)
+- tbsp_receiver_open(ifname), tbsp_receiver_recv(r, buf, size, timeout_ms), tbsp_receiver_close(r)
+
+Chunk size is up to TBSP_API_MAX_PAYLOAD (8192 bytes).
+
+File transfer demo (send a file from host A to host B):
+
+Receiver (run first, e.g. on host B):
+
+```bash
+sudo ./file_receiver en5 ./received
+```
+
+Sender (e.g. on host A):
+
+```bash
+sudo ./file_sender en5 /path/to/video.mp4
+```
+
+The file is saved under the given output directory with its original name. Optional third argument to file_sender sets the remote filename.
+
+---
+
 ## 10. Usage
 
 ### Build
@@ -166,7 +198,7 @@ Non-blocking, poll loop, ACK frames.
 make
 ```
 
-Produces: sender, receiver, sender_hp, receiver_hp.
+Produces: sender, receiver, sender_hp, receiver_hp, file_sender, file_receiver.
 
 ### Run (root required)
 
@@ -202,9 +234,13 @@ Note: Sender and receiver typically run on different hosts (Thunderbolt bridge) 
   - Makefile
   - include/
     - tbsp_common.h (TBSP protocol header)
+    - tbsp_api.h (C API for send/recv)
     - shared_region.h (Variant A reference)
   - src/
     - tbsp_sender.c
     - tbsp_receiver.c
     - tbsp_sender_hp.c
     - tbsp_receiver_hp.c
+    - tbsp_api.c (API implementation)
+    - file_sender.c (file transfer demo)
+    - file_receiver.c (file transfer demo)
