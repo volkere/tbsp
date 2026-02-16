@@ -16,7 +16,7 @@
 #include "tbsp_api.h"
 
 #define ETH_HEADER_LEN 14
-#define READ_BUF_SIZE  65536
+#define READ_BUF_SIZE  (512 * 1024)
 #define RECV_QUEUE_SIZE 2048
 
 struct tbsp_sender {
@@ -254,60 +254,7 @@ static int queue_pop(tbsp_receiver_t *r, void *buf, unsigned int buf_size) {
     return (int)plen;
 }
 
-static void drain_bpf_into_queue(tbsp_receiver_t *r) {
-    struct pollfd pfd = { .fd = r->bpf_fd, .events = POLLIN };
-    while (poll(&pfd, 1, 0) > 0) {
-        ssize_t n = read(r->bpf_fd, r->read_buf, READ_BUF_SIZE);
-        if (n <= 0)
-            return;
-        char *ptr = (char *)r->read_buf;
-        while (ptr + sizeof(struct bpf_hdr) <= (char *)r->read_buf + n) {
-            struct bpf_hdr *bh = (struct bpf_hdr *)ptr;
-            size_t hdrlen = bh->bh_hdrlen;
-            size_t caplen = bh->bh_caplen;
-            if (ptr + hdrlen + caplen > (char *)r->read_buf + n)
-                break;
-            uint8_t *pkt = (uint8_t *)(ptr + hdrlen);
-            if (caplen < ETH_HEADER_LEN + sizeof(TBSPHeader))
-                goto next;
-            uint16_t etype = (uint16_t)pkt[12] << 8 | pkt[13];
-            if (etype != TBSP_ETHERTYPE)
-                goto next;
-            TBSPHeader *th = (TBSPHeader *)(pkt + ETH_HEADER_LEN);
-            if (th->type == TBSP_TYPE_DATA) {
-                if (th->sequence != r->expected_seq)
-                    goto next;
-                uint32_t plen = th->payload_len;
-                if (plen > 0 && caplen >= ETH_HEADER_LEN + sizeof(TBSPHeader) + plen) {
-                    const uint8_t *payload = pkt + ETH_HEADER_LEN + sizeof(TBSPHeader);
-                    if (queue_push(r, payload, plen) != 0)
-                        return;
-                    memcpy(r->sender_mac, pkt + 6, 6);
-                    memcpy(r->my_mac, pkt, 6);
-                    r->expected_seq++;
-                    r->free_slots = r->free_slots > 0 ? r->free_slots - 1 : 0;
-                    receiver_send_ack(r);
-                }
-            }
-next:
-            ptr += BPF_WORDALIGN(hdrlen + caplen);
-        }
-    }
-}
-
-int tbsp_receiver_recv(tbsp_receiver_t *r, void *buf, unsigned int buf_size, int timeout_ms) {
-    if (r->queue_head != r->queue_tail) {
-        drain_bpf_into_queue(r);
-        if (r->queue_head != r->queue_tail)
-            return queue_pop(r, buf, buf_size);
-    }
-    struct pollfd pfd = { .fd = r->bpf_fd, .events = POLLIN };
-    int rv = poll(&pfd, 1, timeout_ms);
-    if (rv <= 0)
-        return rv == 0 ? 0 : -1;
-    ssize_t n = read(r->bpf_fd, r->read_buf, READ_BUF_SIZE);
-    if (n <= 0)
-        return -1;
+static void process_read_buffer(tbsp_receiver_t *r, ssize_t n) {
     char *ptr = (char *)r->read_buf;
     while (ptr + sizeof(struct bpf_hdr) <= (char *)r->read_buf + n) {
         struct bpf_hdr *bh = (struct bpf_hdr *)ptr;
@@ -329,7 +276,7 @@ int tbsp_receiver_recv(tbsp_receiver_t *r, void *buf, unsigned int buf_size, int
             if (plen > 0 && caplen >= ETH_HEADER_LEN + sizeof(TBSPHeader) + plen) {
                 const uint8_t *payload = pkt + ETH_HEADER_LEN + sizeof(TBSPHeader);
                 if (queue_push(r, payload, plen) != 0)
-                    break;
+                    return;
                 memcpy(r->sender_mac, pkt + 6, 6);
                 memcpy(r->my_mac, pkt, 6);
                 r->expected_seq++;
@@ -340,6 +287,38 @@ int tbsp_receiver_recv(tbsp_receiver_t *r, void *buf, unsigned int buf_size, int
 next:
         ptr += BPF_WORDALIGN(hdrlen + caplen);
     }
+}
+
+static void drain_bpf_into_queue(tbsp_receiver_t *r) {
+    struct pollfd pfd = { .fd = r->bpf_fd, .events = POLLIN };
+    if (poll(&pfd, 1, 0) <= 0)
+        return;
+    ssize_t n;
+    do {
+        n = read(r->bpf_fd, r->read_buf, READ_BUF_SIZE);
+        if (n <= 0)
+            return;
+        process_read_buffer(r, n);
+    } while (n == (ssize_t)READ_BUF_SIZE);
+}
+
+int tbsp_receiver_recv(tbsp_receiver_t *r, void *buf, unsigned int buf_size, int timeout_ms) {
+    if (r->queue_head != r->queue_tail) {
+        drain_bpf_into_queue(r);
+        if (r->queue_head != r->queue_tail)
+            return queue_pop(r, buf, buf_size);
+    }
+    struct pollfd pfd = { .fd = r->bpf_fd, .events = POLLIN };
+    int rv = poll(&pfd, 1, timeout_ms);
+    if (rv <= 0)
+        return rv == 0 ? 0 : -1;
+    ssize_t n;
+    do {
+        n = read(r->bpf_fd, r->read_buf, READ_BUF_SIZE);
+        if (n <= 0)
+            return -1;
+        process_read_buffer(r, n);
+    } while (n == (ssize_t)READ_BUF_SIZE);
     if (r->queue_head != r->queue_tail)
         return queue_pop(r, buf, buf_size);
     return 0;

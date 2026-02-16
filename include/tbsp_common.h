@@ -5,7 +5,7 @@
 #define TBSP_ETHERTYPE 0x88B5
 #define TBSP_VERSION   1
 #define MAX_FRAME      9000
-#define WINDOW_SIZE    1024
+#define WINDOW_SIZE    512
 #define PAYLOAD_SIZE   1400
 
 /* Frame types */
