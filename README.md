@@ -127,11 +127,20 @@ Note: Sender and receiver typically run on different hosts (Thunderbolt bridge) 
 
 ---
 
+Development environment (DevPod)
+
+To develop locally (e.g. Mac mini) while running the dev container on a remote host (e.g. Mac Studio), see [docs/DEVPOD-REMOTE-SETUP.md](docs/DEVPOD-REMOTE-SETUP.md) for SSH provider setup, workspace creation, and IDE connection.
+
+---
+
 Project layout
 
 - TBSP/
   - README.md
   - Makefile
+  - .devcontainer.json (Dev-Container für VS Code/DevPod, siehe docs/DEVPOD-REMOTE-SETUP.md)
+  - scripts/
+    - devpod-check.sh (Pre-Flight-Check vor devpod up)
   - include/
     - tbsp_common.h (TBSP protocol header)
     - shared_region.h (Variant A reference)
@@ -140,3 +149,6 @@ Project layout
     - tbsp_receiver.c
     - tbsp_sender_hp.c
     - tbsp_receiver_hp.c
+  - docs/
+    - ARCHITECTURE.md
+    - DEVPOD-REMOTE-SETUP.md

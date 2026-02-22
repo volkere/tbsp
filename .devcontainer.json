@@ -1,0 +1,13 @@
+{
+  "name": "TBSP C Dev",
+  "image": "mcr.microsoft.com/devcontainers/cpp",
+  "postCreateCommand": "make sender receiver sender_hp receiver_hp 2>/dev/null || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack"
+      ]
+    }
+  }
+}
